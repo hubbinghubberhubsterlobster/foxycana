@@ -36,12 +36,16 @@ const PREBUILT = [
   ['S12-1','12','Amber-Emerald'],['S12-2','12','Amethyst-Ruby'],
   ['S14-1','14','Amethyst-Steel'],['S14-2','14','Emerald-Sapphire'],
   ['G1-1','G1','','Gateway: Stitch & Maleficent'],['G1-2','G1','','Gateway: Elsa & Mickey Mouse'],
-  ['Q1-2','Q1','','Illumineer’s Quest: Deep Trouble – Mulan'],['Q1-3','Q1','','Illumineer’s Quest: Deep Trouble – Yen Sid'],
-  ['Q2-2','Q2','','Illumineer’s Quest: Palace Heist – Bolt & Goofy'],['Q2-3','Q2','','Illumineer’s Quest: Palace Heist – Elsa & Pinocchio'],
-  ['Q3-2','Q3','','Illumineer’s Quest: Hunny Rescue – Christopher Robin & Sven'],['Q3-3','Q3','','Illumineer’s Quest: Hunny Rescue – Mr. Incredible & Violet']
+  // Illumineer's Quest: Komplettpaket = alle Decks aus der Box (Szenario-Deck + 2 Spielerdecks)
+  ['Q1-1+Q1-2+Q1-3','Q1','','{Q1} – Komplette Box (3 Decks)'],['Q1-1','Q1','','{Q1} – Szenario-Deck Ursula'],
+  ['Q1-2','Q1','','{Q1} – Mulan-Deck'],['Q1-3','Q1','','{Q1} – Yen-Sid-Deck'],
+  ['Q2-1+Q2-2+Q2-3','Q2','','{Q2} – Komplette Box (3 Decks)'],['Q2-1','Q2','','{Q2} – Szenario-Deck Jafar'],
+  ['Q2-2','Q2','','{Q2} – Bolt & Goofy'],['Q2-3','Q2','','{Q2} – Elsa & Pinocchio'],
+  ['Q3-1+Q3-2+Q3-3','Q3','','{Q3} – Komplette Box (3 Decks)'],['Q3-1','Q3','','{Q3} – Szenario-Deck der Ranken'],
+  ['Q3-2','Q3','','{Q3} – Christopher Robin & Sven'],['Q3-3','Q3','','{Q3} – Mr. Incredible & Violet']
 ];
 // Mögliche neuere Starterdecks – werden im Hintergrund gesucht
-const PREBUILT_PROBE = ['S11-1','S11-2','S13-1','S13-2','S15-1','S15-2','S16-1','S16-2','S17-1','S17-2','S18-1','S18-2'];
+const PREBUILT_PROBE = ['Q4-1','Q4-2','Q4-3','Q5-1','Q5-2','Q5-3','S11-1','S11-2','S13-1','S13-2','S15-1','S15-2','S16-1','S16-2','S17-1','S17-2','S18-1','S18-2'];
 
 const S = {
   cards: [], byId: new Map(), sets: {}, cardsDate: null, cardsFetched: 0,

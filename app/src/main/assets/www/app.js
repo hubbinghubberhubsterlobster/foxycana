@@ -367,21 +367,28 @@ function prebuiltList(){
 }
 function prebuiltName(p){
   const [code, set, col, name] = p;
-  if(name) return name;
+  if(name) return name.replace(/\{(\w+)\}/g, (_, k) => 'Illumineer’s Quest: ' + setName(k));
   const inks = (col || '').split('-').map(k => (INKS[k] || {}).de || k).join('/');
   return `Starterdeck ${setName(set)}${inks ? ' – ' + inks : ''}`;
 }
 A.prebuilt = () => {
-  const list = prebuiltList().sort((a, b) => setOrder(b[1]) < setOrder(a[1]) ? -1 : 1);
+  const list = prebuiltList().map((p, i) => [p, i]).sort((a, b) => setOrder(a[0][1]) === setOrder(b[0][1]) ? a[1] - b[1] : (setOrder(b[0][1]) < setOrder(a[0][1]) ? -1 : 1)).map(x => x[0]);
   openSheet(`<h2>Welches Deck hast du gekauft?</h2><p class="muted small">Alle Karten werden automatisch hinzugefügt – kein Scannen nötig.</p><div class="list">${list.map(p => {
     const inks = (p[2] || '').split('-').filter(Boolean);
     return `<button class="item" style="width:100%;text-align:left" data-act="prebuilt-pick" data-code="${esc(p[0])}"><div class="deck-inks">${inkColDots(inks) || '<span>🎁</span>'}</div><div class="grow"><b style="display:block">${esc(prebuiltName(p))}</b><span class="tiny muted">${esc(p[0])}</span></div><span class="muted">›</span></button>`; }).join('')}</div>`);
 };
-async function loadDeckFile(code){
+async function loadOneDeck(code){
   for(const L of ['de', 'en']){
     try{ return await getJSON(LJ + L + '/decks/deckdata.' + code + '.json'); }catch(e){ /* nächste Sprache */ }
   }
   throw new Error('Deck nicht gefunden');
+}
+/* "Q3-1+Q3-2+Q3-3" = mehrere Decks aus einer Box zusammen */
+async function loadDeckFile(code){
+  const parts = code.split('+');
+  if(parts.length === 1) return loadOneDeck(code);
+  const all = await Promise.all(parts.map(loadOneDeck));
+  return {cards: all.flatMap(j => j.cards || []), foilIds: all.flatMap(j => j.foilIds || []), name: ''};
 }
 A['prebuilt-pick'] = async el => {
   const code = el.dataset.code; const p = prebuiltList().find(x => x[0] === code);
@@ -413,8 +420,8 @@ async function probeDecks(){
     if(prebuiltList().some(p => p[0] === code)) continue;
     try{
       const j = await getJSON(LJ + 'en/decks/deckdata.' + code + '.json');
-      const set = code.slice(1).split('-')[0];
-      S.extraDecks.push([code, set, (j.colors || []).join('-'), j.name || '']); persist();
+      const set = code[0] === 'Q' ? code.split('-')[0] : code.slice(1).split('-')[0];
+      S.extraDecks.push([code, set, (j.colors || []).join('-'), j.name || (code[0] === 'Q' ? '{' + set + '} – Deck ' + code.split('-')[1] : '')]); persist();
     }catch(e){}
   }
 }
