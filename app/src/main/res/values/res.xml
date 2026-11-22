@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Foxycana</string>
+    <color name="bg">#0E1020</color>
+    <color name="icon_bg">#161A36</color>
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+    </style>
+</resources>
