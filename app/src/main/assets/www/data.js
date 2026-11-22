@@ -11,6 +11,10 @@ const FX_URL = 'https://api.frankfurter.app/latest?from=EUR';
 const ECB_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml';
 const CURRENCIES = ['EUR','USD','GBP','CHF','PLN','CZK','DKK','SEK','NOK','HUF','JPY','CAD','AUD'];
 const HOUR = 3600e3;
+// Web-Version (iPhone): ohne Android-Hülle. Daten kommen vorbereitet aus /data (täglich per GitHub aktualisiert).
+const WEB = !NATIVE;
+const WD = 'data/';
+function wd(f){ return WD + f + '?t=' + Math.floor(Date.now() / 60000); }
 
 const INKS = {
   Amber:{de:'Bernstein',c:'#F4B223'}, Amethyst:{de:'Amethyst',c:'#8E5BB5'}, Emerald:{de:'Smaragd',c:'#2E9E52'},
@@ -70,7 +74,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function netUrl(u){ return NATIVE ? '/net?u=' + encodeURIComponent(u) : u; }
 async function getText(u){
   const r = await fetch(netUrl(u), {cache:'no-store'});
-  if(!r.ok) throw new Error('HTTP ' + r.status + ' bei ' + new URL(u).host);
+  if(!r.ok){ let h = u; try{ h = new URL(u, location.href).host; }catch(e){} throw new Error('HTTP ' + r.status + ' bei ' + h); }
   return r.text();
 }
 async function getJSON(u){ return JSON.parse(await getText(u)); }
@@ -151,6 +155,11 @@ function applyCards(cd){
   if(window.ASSIST) ASSIST.reset();
 }
 async function updateCards(progress=()=>{}){
+  if(WEB){
+    progress('Lade Kartendaten …');
+    const cd = await getJSON(wd('cards.json')); cd.fetched = Date.now();
+    await DB.set('cards', cd); applyCards(cd); return cd;
+  }
   progress('Lade englische Kartendaten …');
   const en = await getJSON(LJ + 'en/allCards.json');
   let de = null;
@@ -174,6 +183,12 @@ async function updateCards(progress=()=>{}){
 /* ---------- Cardmarket-Preisguide (täglich, EUR) ---------- */
 function pg(p, ...keys){ for(const k of keys){ const v = p[k]; if(v != null && v !== '' && !isNaN(v)) return +v; } return null; }
 async function updatePrices(){
+  if(WEB){
+    const pr = await getJSON(wd('prices.json')); pr.fetched = Date.now();
+    await DB.set('prices', pr);
+    S.prices = pr.m || {}; S.cmFb = pr.fb || {}; S.priceDate = pr.date; S.priceFetched = pr.fetched; if(window.ASSIST) ASSIST.reset();
+    return pr;
+  }
   const j = await getJSON(CM_PG);
   const m = {};
   for(const p of (j.priceGuides || j.priceguides || [])){
@@ -206,7 +221,7 @@ async function updatePrices(){
 async function updateRates(){
   let rates = null, date = null;
   try{
-    const j = await getJSON(FX_URL);
+    const j = await getJSON(WEB ? wd('rates.json') : FX_URL);
     rates = Object.assign({EUR:1}, j.rates || {}); date = j.date;
   }catch(e){
     const x = await getText(ECB_URL);
@@ -296,4 +311,20 @@ function collectionStats(){
   let total = 0, value = 0; const uniq = new Set();
   for(const e of entries()){ total += e.q; uniq.add(e.c.id); const p = priceEUR(e.c, e.foil); if(p) value += p * e.q; }
   return {total, unique: uniq.size, value};
+}
+
+/* ---------- Meta-Seite von inkdecks.com auslesen (auch vom Daten-Skript genutzt) ---------- */
+function parseMetaHtml(html, format){
+  const txt = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, ' $1 ').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/\s+/g, ' ');
+  const ink = '(Amber|Amethyst|Emerald|Ruby|Sapphire|Steel)';
+  const re = new RegExp("([A-Z][A-Za-z'.&\\- ]{2,40}?)\\s+" + ink + "\\s*[/&\\- ]\\s*" + ink + "\\s+(\\d{1,2})\\s*%\\s+(\\d{1,3}|--)\\s*%?", 'g');
+  const list = []; const seen = new Set(); let m;
+  while((m = re.exec(txt))){
+    const name = m[1].trim().replace(/^(Tier\s*\w+\s*)/i, ''); const key = name + m[2] + m[3];
+    if(seen.has(key) || /meta|share|archetype/i.test(name)) continue; seen.add(key);
+    list.push({name, inks:[m[2], m[3]], share:+m[4], wr: m[5] === '--' ? null : +m[5]});
+  }
+  const dm = txt.match(/Last update:\s*([A-Za-z]+ \d{1,2}, \d{4})/);
+  if(list.length < 4) return null;
+  return {date: dm ? new Date(dm[1]).toISOString() : new Date().toISOString(), source:'inkdecks.com', format, list: list.slice(0, 20), fetched: Date.now(), live:true};
 }

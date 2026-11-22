@@ -199,21 +199,10 @@ const ASSIST = (() => {
     const mkey = 'meta-' + st.format; const cached = await DB.get(mkey);
     if(cached && !force && Date.now() - cached.fetched < 12 * HOUR){ META = cached; return META; }
     try{
-      const html = await getText('https://inkdecks.com/lorcana-metagame' + (st.format === 'infinity' ? '/infinity' : ''));
-      const txt = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, ' $1 ').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/\s+/g, ' ');
-      const ink = '(Amber|Amethyst|Emerald|Ruby|Sapphire|Steel)';
-      const re = new RegExp("([A-Z][A-Za-z'.&\\- ]{2,40}?)\\s+" + ink + "\\s*[/&\\- ]\\s*" + ink + "\\s+(\\d{1,2})\\s*%\\s+(\\d{1,3}|--)\\s*%?", 'g');
-      const list = []; const seen = new Set(); let m;
-      while((m = re.exec(txt))){
-        const name = m[1].trim().replace(/^(Tier\s*\w+\s*)/i, ''); const key = name + m[2] + m[3];
-        if(seen.has(key) || /meta|share|archetype/i.test(name)) continue; seen.add(key);
-        list.push({name, inks:[m[2], m[3]], share:+m[4], wr: m[5] === '--' ? null : +m[5]});
-      }
-      const dm = txt.match(/Last update:\s*([A-Za-z]+ \d{1,2}, \d{4})/);
-      if(list.length >= 4){
-        META = {date: dm ? new Date(dm[1]).toISOString() : new Date().toISOString(), source:'inkdecks.com', format: st.format, list: list.slice(0, 20), fetched: Date.now(), live:true};
-        await DB.set(mkey, META); return META;
-      }
+      let res = null;
+      if(WEB){ res = await getJSON(wd('meta-' + st.format + '.json')); if(res) res.fetched = Date.now(); }
+      else res = parseMetaHtml(await getText('https://inkdecks.com/lorcana-metagame' + (st.format === 'infinity' ? '/infinity' : '')), st.format);
+      if(res && res.list && res.list.length >= 4){ META = res; await DB.set(mkey, META); return META; }
     }catch(e){ console.warn('Meta nicht geladen', e); }
     META = cached || (st.format === 'core' ? Object.assign({fetched:0, live:false}, META_FALLBACK) : {fetched:0, live:false, date:null, list:[]});
     return META;

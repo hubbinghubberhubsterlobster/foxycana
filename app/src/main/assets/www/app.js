@@ -405,6 +405,7 @@ A.prebuilt = () => {
     return `<button class="item" style="width:100%;text-align:left" data-act="prebuilt-pick" data-code="${esc(p[0])}"><div class="deck-inks">${inkColDots(inks) || '<span>🎁</span>'}</div><div class="grow"><b style="display:block">${esc(prebuiltName(p))}</b><span class="tiny muted">${esc(p[0])}</span></div><span class="muted">›</span></button>`; }).join('')}</div>`);
 };
 async function loadOneDeck(code){
+  if(WEB) return getJSON(wd('decks/' + code + '.json'));
   for(const L of ['de', 'en']){
     try{ return await getJSON(LJ + L + '/decks/deckdata.' + code + '.json'); }catch(e){ /* nächste Sprache */ }
   }
@@ -445,6 +446,10 @@ A['pb-add'] = () => {
 async function probeDecks(){
   const last = +(localStorage.getItem('fx-probe') || 0); if(Date.now() - last < 72 * HOUR) return;
   try{ localStorage.setItem('fx-probe', String(Date.now())); }catch(e){}
+  if(WEB){
+    try{ const ix = await getJSON(wd('decks/extra.json')); for(const x of ix) if(!prebuiltList().some(p => p[0] === x[0])) S.extraDecks.push(x); persist(); }catch(e){}
+    return;
+  }
   for(const code of PREBUILT_PROBE){
     if(prebuiltList().some(p => p[0] === code)) continue;
     try{
@@ -486,8 +491,8 @@ function renderMore(){
         <button class="item" style="width:100%" data-act="backup-import">♻️ Backup laden (wiederherstellen)</button>
         <button class="item" style="width:100%;color:var(--bad)" data-act="coll-clear">🗑️ Sammlung leeren</button>
       </div>
-      <label class="lbl">Automatisches Backup</label>${sel('autoBackup', [['on','An (empfohlen)'],['off','Aus']], s.autoBackup === 'off' ? 'off' : 'on')}
-      <p class="tiny muted">Nach jeder Änderung speichert Foxycana automatisch ein Backup in <b>Download/Foxycana</b>: „foxycana-backup-aktuell.json“ plus eins pro Wochentag (7 Tage zurück). Die Dateien bleiben auch erhalten, wenn die App gelöscht wird. Letztes Backup: <b>${lastBackup() ? fmtDate(new Date(lastBackup()).toISOString()) : 'noch keins'}</b>.<br>Zum Wiederherstellen: „Backup laden“ und die Datei auswählen.</p></div>
+      ${WEB ? `<p class="tiny muted">Deine Sammlung liegt nur in diesem Browser auf diesem Gerät. Speichere ab und zu ein Backup („Backup jetzt speichern“ → in „Dateien“ sichern) – damit kannst du alles wiederherstellen.</p></div>` : `<label class="lbl">Automatisches Backup</label>${sel('autoBackup', [['on','An (empfohlen)'],['off','Aus']], s.autoBackup === 'off' ? 'off' : 'on')}
+      <p class="tiny muted">Nach jeder Änderung speichert Foxycana automatisch ein Backup in <b>Download/Foxycana</b>: „foxycana-backup-aktuell.json“ plus eins pro Wochentag (7 Tage zurück). Die Dateien bleiben auch erhalten, wenn die App gelöscht wird. Letztes Backup: <b>${lastBackup() ? fmtDate(new Date(lastBackup()).toISOString()) : 'noch keins'}</b>.<br>Zum Wiederherstellen: „Backup laden“ und die Datei auswählen.</p></div>`}
     <p class="tiny muted" style="margin-top:16px">Foxycana ${NATIVE ? 'v' + esc(NATIVE.version()) : '(Browser)'} · Kartendaten: LorcanaJSON · Preise: Cardmarket-Preisguide (täglich aktualisiert, ${'<a href="#" data-act="open-url" data-url="https://www.cardmarket.com/de/Lorcana" style="color:var(--gold)">cardmarket.com</a>'}) · Kurse: Europäische Zentralbank. Inoffizielle Fan-App, nicht verbunden mit Disney oder Ravensburger.</p>`;
   $$('select[data-set]', view).forEach(el => el.onchange = () => {
     const k = el.dataset.set, v = el.value;
@@ -638,14 +643,15 @@ A['scan-open'] = async () => {
   $('#scan').hidden = false; SC.on = true; SC.paused = false; SC.state = 'search'; SC.last = null; SC.sawEmpty = true; SC.lastAdded = null;
   SC.rot = S.settings.rotation === 'auto' ? (SC.goodRot ?? 0) : +S.settings.rotation;
   scanOptsUI(); renderLast();
-  if(!NATIVE || !NATIVE.ocr){ scanStatus('Scanner geht nur in der Android-App'); }
+  if(!NATIVE) scanStatus('Texterkennung wird geladen …');
   try{
     SC.stream = await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}});
     vid.srcObject = SC.stream; await vid.play().catch(() => {});
     try{ const tr = SC.stream.getVideoTracks()[0]; const caps = tr.getCapabilities ? tr.getCapabilities() : {};
       if(caps.focusMode && caps.focusMode.includes('continuous')) await tr.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
     if(NATIVE) NATIVE.keepAwake(true);
-    if(NATIVE && NATIVE.ocr){ scanStatus('Lege eine Karte unter die Kamera'); scanLoop(); }
+    if(!NATIVE){ try{ await webOcrWorker(); }catch(e){ scanStatus('Texterkennung nicht verfügbar'); return; } }
+    scanStatus('Lege eine Karte unter die Kamera'); scanLoop();
   }catch(e){
     scanStatus('Kamera nicht verfügbar');
     toast('Bitte erlaube den Kamerazugriff für Foxycana', 4000);
@@ -674,6 +680,30 @@ window.__ocrDone = (id, json) => { const f = OCRP.get(id); if(!f) return; OCRP.d
 function runOcr(dataUrl, rot){
   return new Promise(res => { const id = 'o' + (++ocrSeq); OCRP.set(id, res); NATIVE.ocr(id, dataUrl, rot);
     setTimeout(() => { if(OCRP.has(id)){ OCRP.delete(id); res({error:'timeout'}); } }, 9000); });
+}
+/* Texterkennung im Browser (iPhone): Tesseract.js, wird beim ersten Scan geladen */
+let TESS = null;
+function loadScript(src){ return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Script')); document.head.appendChild(s); }); }
+async function webOcrWorker(){
+  if(TESS) return TESS;
+  if(!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+  TESS = await Tesseract.createWorker(['eng', 'deu']);
+  return TESS;
+}
+async function webOcr(canvas, rot){
+  const w = await webOcrWorker();
+  let src = canvas;
+  if(rot){
+    const t = document.createElement('canvas'), sw = rot % 180 ? canvas.height : canvas.width, sh = rot % 180 ? canvas.width : canvas.height;
+    t.width = sw; t.height = sh; const x = t.getContext('2d');
+    x.translate(sw / 2, sh / 2); x.rotate(rot * Math.PI / 180); x.drawImage(canvas, -canvas.width / 2, -canvas.height / 2); src = t;
+  }
+  try{
+    const {data} = await w.recognize(src);
+    let lines = (data.lines || []).map(l => ({t: String(l.text || '').trim()}));
+    if(!lines.length && data.text) lines = data.text.split('\n').map(t => ({t: t.trim()}));
+    return {lines: lines.filter(l => l.t)};
+  }catch(e){ return {error: String(e)}; }
 }
 const sigCv = $('#cv-sig'), sigCtx = sigCv.getContext('2d', {willReadFrequently:true});
 /* Bereich des Rahmens auf dem Bildschirm → Ausschnitt im Kamerabild (Video ist "cover" skaliert) */
@@ -716,11 +746,11 @@ async function scanTick(){
   }
   // Nur den Bereich im Rahmen auswerten – Nachbarkarten (z. B. im Binder) werden ignoriert
   const cv = $('#cv');
-  const sc = Math.min(2, Math.max(1, 1400 / Math.max(crop.w, crop.h)));
+  const sc = NATIVE ? Math.min(2, Math.max(1, 1400 / Math.max(crop.w, crop.h))) : Math.min(1.5, 1000 / Math.max(crop.w, crop.h));
   cv.width = Math.round(crop.w * sc); cv.height = Math.round(crop.h * sc);
   const cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high';
   cx.drawImage(vid, crop.x, crop.y, crop.w, crop.h, 0, 0, cv.width, cv.height);
-  const res = await runOcr(cv.toDataURL('image/jpeg', 0.86), SC.rot);
+  const res = NATIVE ? await runOcr(cv.toDataURL('image/jpeg', 0.86), SC.rot) : await webOcr(cv, SC.rot);
   if(!SC.on || SC.paused) return;
   if(res.error){ scanStatus('Texterkennung: ' + res.error); return; }
   const nLines = (res.lines || []).length;
@@ -849,7 +879,7 @@ async function backgroundRefresh(){
   if(refreshing) return; refreshing = true; lastRefresh = Date.now();
   let errs = 0; setSync('⟳ Aktualisiere Daten …');
   try{
-    const md = await getJSON(LJ + 'en/metadata.json');
+    const md = await getJSON(WEB ? wd('metadata.json') : LJ + 'en/metadata.json');
     if(!S.cardsDate || (md.generatedOn && md.generatedOn !== S.cardsDate) || S.cardsV !== 2){ setSync('⟳ Neue Kartendaten werden geladen …'); await updateCards(); }
   }catch(e){ errs++; console.warn(e); }
   try{ setSync('⟳ Aktualisiere Preise …'); await updatePrices(); }catch(e){ errs++; console.warn(e); }
@@ -862,6 +892,7 @@ async function backgroundRefresh(){
 }
 async function boot(){
   try{ await DB.open(); }catch(e){ console.warn('IndexedDB', e); }
+  if(WEB && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   await loadUser();
   const cd = await DB.get('cards'); if(cd && cd.cards && cd.cards.length) applyCards(cd);
   const pr = await DB.get('prices'); if(pr){ S.prices = pr.m || {}; S.cmFb = pr.fb || {}; S.priceDate = pr.date; S.priceFetched = pr.fetched || 0; }
