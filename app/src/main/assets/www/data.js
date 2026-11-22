@@ -58,7 +58,7 @@ const S = {
     currency:'EUR', dispLang:'de', priceBasis:'trend',
     scanLang:'auto', defaultLang:'de', confirm:2, sound:true, vibrate:true, rotation:'auto', foil:false, frame:'m'
   },
-  ui: { tab:'collection', mode:'owned', q:'', inks:[], set:'', rarity:'', type:'', lang:'', foil:'', sort:'value', limit:240, deck:null }
+  ui: { assist:null, tab:'collection', mode:'owned', q:'', inks:[], set:'', rarity:'', type:'', lang:'', foil:'', sort:'value', limit:240, deck:null }
 };
 
 /* ---------- Hilfsfunktionen ---------- */
@@ -145,9 +145,10 @@ function compactCard(c, d){
   };
 }
 function applyCards(cd){
-  S.cards = cd.cards || []; S.sets = cd.sets || {}; S.cardsDate = cd.date; S.cardsFetched = cd.fetched || 0;
+  S.cards = cd.cards || []; S.sets = cd.sets || {}; S.cardsDate = cd.date; S.cardsFetched = cd.fetched || 0; S.cardsV = cd.v || 1;
   S.byId = new Map(S.cards.map(c => [c.id, c]));
   if(window.ENGINE) ENGINE.reset();
+  if(window.ASSIST) ASSIST.reset();
 }
 async function updateCards(progress=()=>{}){
   progress('Lade englische Kartendaten …');
@@ -162,9 +163,9 @@ async function updateCards(progress=()=>{}){
   for(const [code, s] of Object.entries(en.sets || {})){
     const sd = (de && de.sets && de.sets[code]) || {};
     sets[code] = {code, name:{en:s.name || code, de:sd.name || s.name || code}, release: s.releaseDate || s.prereleaseDate || '',
-      base: (s.cardCounts && s.cardCounts.base) || null, type: s.type || 'expansion', num: s.number};
+      base: (s.cardCounts && s.cardCounts.base) || null, type: s.type || 'expansion', num: s.number, formats: s.allowedInFormats || null};
   }
-  const cd = {cards, sets, date: (en.metadata && en.metadata.generatedOn) || new Date().toISOString(), fetched: Date.now(), hasDe: !!de};
+  const cd = {v: 2, cards, sets, date: (en.metadata && en.metadata.generatedOn) || new Date().toISOString(), fetched: Date.now(), hasDe: !!de};
   await DB.set('cards', cd);
   applyCards(cd);
   return cd;
@@ -197,7 +198,7 @@ async function updatePrices(){
   }catch(e){ console.warn('Produktliste nicht geladen', e); }
   const pr = {m, fb, date: j.createdAt || new Date().toISOString(), fetched: Date.now()};
   await DB.set('prices', pr);
-  S.prices = m; S.cmFb = fb; S.priceDate = pr.date; S.priceFetched = pr.fetched;
+  S.prices = m; S.cmFb = fb; if(window.ASSIST) ASSIST.reset(); S.priceDate = pr.date; S.priceFetched = pr.fetched;
   return pr;
 }
 

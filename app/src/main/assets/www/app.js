@@ -50,14 +50,21 @@ function stepper(attrs, q){
 }
 
 /* ---------- Navigation ---------- */
-A.tab = el => { S.ui.tab = el.dataset.tab; if(S.ui.tab !== 'decks') S.ui.deck = null; S.ui.limit = 240; render(); window.scrollTo(0, 0); };
+/* Verlauf: Zurück-Knopf und Android-Zurückwischen gehen zur vorherigen Ansicht */
+const NAV = [];
+function snap(){ const u = S.ui; return {tab:u.tab, deck:u.deck, assist:u.assist, mode:u.mode, set:u.set, sort:u.sort, q:u.q, inks:[...u.inks], rarity:u.rarity, type:u.type, lang:u.lang, foil:u.foil, y: window.scrollY}; }
+function go(ch){ NAV.push(snap()); if(NAV.length > 50) NAV.shift(); Object.assign(S.ui, ch); S.ui.limit = 240; render(); window.scrollTo(0, 0); }
+function goBack(){ if(!NAV.length) return false; const st = NAV.pop(); const y = st.y; delete st.y; Object.assign(S.ui, st); render(); setTimeout(() => window.scrollTo(0, y || 0), 0); return true; }
+function backBtn(){ return NAV.length ? `<button class="round back" data-act="back" aria-label="Zurück">‹</button>` : ''; }
+A.back = () => { if(!goBack()) go({tab:'collection', deck:null, assist:null}); };
+A.tab = el => { const t = el.dataset.tab; if(t === S.ui.tab && !S.ui.deck && !S.ui.assist){ window.scrollTo(0, 0); return; } go({tab:t, deck:null, assist:null}); };
 function render(){
   $$('#nav .nav-btn').forEach(b => b.classList.toggle('on', b.dataset.tab === S.ui.tab));
   if(!S.cards.length){ return; }
   const t = S.ui.tab;
   if(t === 'collection') renderCollection();
   else if(t === 'sets') renderSets();
-  else if(t === 'decks') S.ui.deck ? renderDeck() : renderDecks();
+  else if(t === 'decks') S.ui.assist ? ASSIST.render() : S.ui.deck ? renderDeck() : renderDecks();
   else renderMore();
 }
 
@@ -81,7 +88,7 @@ function matchCard(c){
 function renderCollection(){
   const st = collectionStats(), u = S.ui;
   view.innerHTML = `
-    <div class="row between"><div class="logo">${LOGO}<h1 style="margin:0">Foxycana</h1></div>
+    <div class="row between"><div class="logo">${backBtn()}${LOGO}<h1 style="margin:0">Foxycana</h1></div>
       <span class="tag">${esc(S.settings.currency)}</span></div>
     <div class="hero" style="margin-top:12px">
       <svg class="spark" viewBox="0 0 24 24" style="fill:#E3B65C;stroke:none"><path d="M12 0l2.6 9.4L24 12l-9.4 2.6L12 24l-2.6-9.4L0 12l9.4-2.6z"/></svg>
@@ -168,9 +175,9 @@ function renderSets(){
       <div class="muted tiny" style="margin:2px 0 7px">Set ${esc(s.code)}${s.release ? ' · ' + fmtDate(s.release) : ''} · ${ownedBase}/${base} Basis${ownedAll > ownedBase ? ' · ' + (ownedAll - ownedBase) + ' Spezial' : ''}</div>
       <div class="progress"><i style="width:${pct}%"></i></div></div><span class="muted small" style="width:38px;text-align:right">${pct}%</span></button>`;
   }).join('');
-  view.innerHTML = `<h1>Sets</h1><p class="muted small" style="margin-top:-6px">Wie viel von jedem Set du schon hast. Tippe ein Set an, um fehlende Karten zu sehen.</p>${rows}`;
+  view.innerHTML = `<div class="row">${backBtn()}<h1 class="grow">Sets</h1></div><p class="muted small" style="margin-top:-6px">Wie viel von jedem Set du schon hast. Tippe ein Set an, um fehlende Karten zu sehen.</p>${rows}`;
 }
-A['open-set'] = el => { Object.assign(S.ui, {tab:'collection', mode:'all', set: el.dataset.set, sort:'number', q:'', inks:[], rarity:'', type:'', lang:'', foil:'', limit:400}); render(); window.scrollTo(0,0); };
+A['open-set'] = el => { go({tab:'collection', mode:'all', set: el.dataset.set, sort:'number', q:'', inks:[], rarity:'', type:'', lang:'', foil:''}); S.ui.limit = 400; renderGrid(); };
 
 /* =========================================================
    Kartendetail
@@ -267,18 +274,19 @@ function renderDecks(){
       <div class="tiny muted">${st.count} Karten · ${st.inks.map(k => INKS[k].de).join('/') || 'leer'}${d.src === 'prebuilt' ? ' · Fertigdeck' : ''}</div>
       ${st.missing ? `<div class="miss">${st.missing} fehlen (${money(st.missingValue)})</div>` : st.count ? '<div class="tiny" style="color:var(--good)">Alle Karten vorhanden</div>' : ''}</div>
       <div class="gold small">${money(st.value)}</div></button>`; }).join('');
-  view.innerHTML = `<h1>Decks</h1>
+  view.innerHTML = `<div class="row">${backBtn()}<h1 class="grow">Decks</h1></div>
+    <button class="deck-item assist-cta" data-act="assist-open"><span style="font-size:26px">✨</span><div class="grow"><b style="display:block">Deck-Assistent</b><span class="tiny muted">Baut die stärksten Decks aus deinen Karten und zeigt, was gerade in der Meta stark ist</span></div><span class="muted">›</span></button>
     <div class="row" style="gap:8px;margin-bottom:14px"><button class="btn grow" data-act="prebuilt">🛍️ Fertigdeck gekauft</button><button class="btn ghost" data-act="deck-new">+ Neu</button></div>
     ${list || `<div class="empty"><div class="icon">🃏</div><b>Noch keine Decks</b><p>Hast du ein Starterdeck gekauft? Tipp auf <b>Fertigdeck gekauft</b> – alle 60 Karten landen sofort in deiner Sammlung.</p></div>`}
     <button class="btn ghost block" data-act="deck-import" style="margin-top:6px">Deckliste einfügen (Text)</button>
-    <div class="card soon" style="margin-top:16px"><b>✨ Deck-Assistent</b><p class="muted small" style="margin:6px 0 0">Kommt im nächsten Schritt: Du sagst, was du spielen willst, und Foxycana baut aus deinen Karten die stärksten Meta-Decks – mit Vorschlägen, welche Karten sich noch lohnen.</p></div>`;
+`;
 }
-A['deck-open'] = el => { S.ui.deck = el.dataset.id; render(); window.scrollTo(0,0); };
-A['deck-back'] = () => { S.ui.deck = null; render(); };
+A['deck-open'] = el => go({tab:'decks', deck: el.dataset.id, assist:null});
+A['deck-back'] = () => { if(!goBack()){ S.ui.deck = null; render(); } };
 A['deck-new'] = async () => {
   const name = await promptText('Neues Deck', '', 'z. B. Bernstein/Stahl Aggro'); if(!name) return;
   const d = {id:'d' + Date.now(), name, cards:{}, src:'manual', created: Date.now()};
-  S.decks.unshift(d); persist(); S.ui.deck = d.id; render();
+  S.decks.unshift(d); persist(); go({deck: d.id});
 };
 function currentDeck(){ return S.decks.find(d => d.id === S.ui.deck); }
 function renderDeck(){
@@ -356,7 +364,7 @@ A['deck-import-go'] = async () => {
   for(const x of ok){ d.cards[x.c.id] = (d.cards[x.c.id] || 0) + x.n; if(toColl) addCard(x.c.id, S.settings.defaultLang, false, x.n); }
   S.decks.unshift(d); persist(); closeSheet();
   if(bad.length) await ask('Nicht alles erkannt', `${bad.length} Zeile(n) konnte ich keiner Karte zuordnen:<br><br>${bad.map(esc).join('<br>')}`, [{l:'OK', v:true}]);
-  S.ui.deck = d.id; render();
+  go({tab:'decks', deck: d.id, assist:null});
 };
 
 /* ---------- Fertigdecks ---------- */
@@ -438,7 +446,7 @@ async function probeDecks(){
 function renderMore(){
   const s = S.settings, st = collectionStats();
   const sel = (id, opts, cur) => `<select data-set="${id}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-  view.innerHTML = `<h1>Mehr</h1>
+  view.innerHTML = `<div class="row">${backBtn()}<h1 class="grow">Mehr</h1></div>
     <div class="card"><h3 style="margin-top:0">Anzeige</h3>
       <label class="lbl">Währung</label>${sel('currency', CURRENCIES.map(c => [c, c + (c !== 'EUR' && S.rates[c] ? ' (1 € = ' + S.rates[c].toFixed(c === 'JPY' || c === 'HUF' ? 0 : 3) + ')' : '')]), s.currency)}
       <label class="lbl">Kartennamen & Bilder</label>${sel('dispLang', [['de','Deutsch'],['en','Englisch']], s.dispLang)}
@@ -771,8 +779,8 @@ document.addEventListener('click', e => {
 window.__androidBack = () => {
   if(sheetOpen()){ closeSheet(); return true; }
   if(!$('#scan').hidden){ A['scan-close'](); return true; }
-  if(S.ui.tab === 'decks' && S.ui.deck){ S.ui.deck = null; render(); return true; }
-  if(S.ui.tab !== 'collection'){ S.ui.tab = 'collection'; render(); return true; }
+  if(goBack()) return true;
+  if(S.ui.tab !== 'collection' || S.ui.deck || S.ui.assist){ Object.assign(S.ui, {tab:'collection', deck:null, assist:null}); render(); return true; }
   return false;
 };
 window.__appPause = () => { saveNow(); if(SC.on){ SC.paused = true; scanOptsUI(); scanStatus('Pausiert'); } };
@@ -797,7 +805,7 @@ async function backgroundRefresh(){
   const now = Date.now();
   try{ if(now - S.priceFetched > 12 * HOUR){ await updatePrices(); render(); } }catch(e){ console.warn(e); }
   try{ if(now - S.ratesFetched > 12 * HOUR){ await updateRates(); if(S.settings.currency !== 'EUR') render(); } }catch(e){ console.warn(e); }
-  try{ if(now - S.cardsFetched > 4 * 24 * HOUR){ await updateCards(); render(); } }catch(e){ console.warn(e); }
+  try{ if(now - S.cardsFetched > 4 * 24 * HOUR || S.cardsV !== 2){ await updateCards(); render(); } }catch(e){ console.warn(e); }
   probeDecks();
 }
 async function boot(){
