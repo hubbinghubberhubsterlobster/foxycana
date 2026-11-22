@@ -367,9 +367,13 @@ function prebuiltList(){
 }
 function prebuiltName(p){
   const [code, set, col, name] = p;
-  if(name) return name.replace(/\{(\w+)\}/g, (_, k) => 'Illumineer’s Quest: ' + setName(k));
+  if(name){
+    const n = name.replace(/\{(\w+)\}/g, (_, k) => setName(k));
+    const inks = (col || '').split('-').filter(Boolean).map(k => (INKS[k] || {}).de || k);
+    return n + (inks.length && /Deck [AB12]$/.test(n) ? ' – ' + inks.join(' & ') : '');
+  }
   const inks = (col || '').split('-').map(k => (INKS[k] || {}).de || k).join('/');
-  return `Starterdeck ${setName(set)}${inks ? ' – ' + inks : ''}`;
+  return `${setName(set)} – Starterdeck ${inks.replace('/', ' & ')}`;
 }
 A.prebuilt = () => {
   const list = prebuiltList().map((p, i) => [p, i]).sort((a, b) => setOrder(a[0][1]) === setOrder(b[0][1]) ? a[1] - b[1] : (setOrder(b[0][1]) < setOrder(a[0][1]) ? -1 : 1)).map(x => x[0]);
@@ -398,7 +402,9 @@ A['prebuilt-pick'] = async el => {
   const items = (j.cards || []).map(x => ({c: S.byId.get(x.id), n: x.amount || 1, foil: !!x.isFoil || foilIds.has(x.id)})).filter(x => x.c);
   const total = items.reduce((s, x) => s + x.n, 0);
   const value = items.reduce((s, x) => s + (priceEUR(x.c, x.foil) || 0) * x.n, 0);
-  window.__pb = {code, items, name: prebuiltName(p || [code, '', '', j.name])};
+  const jc = (j.colors || []).filter(k => INKS[k]);
+  const pp = p ? [p[0], p[1], jc.length === 2 ? jc.join('-') : p[2], p[3]] : [code, '', jc.join('-'), j.name];
+  window.__pb = {code, items, name: prebuiltName(pp)};
   openSheet(`<h2>${esc(window.__pb.name)}</h2><p class="muted small">${total} Karten · Wert ca. <b class="gold">${money(value)}</b></p>
     <label class="lbl">Sprache der Karten</label><div class="seg" id="pb-lang"><button class="${S.settings.defaultLang==='de'?'on':''}" data-act="pb-lang" data-l="de">Deutsch</button><button class="${S.settings.defaultLang==='en'?'on':''}" data-act="pb-lang" data-l="en">Englisch</button></div>
     <label class="row small"><input type="checkbox" id="pb-deck" checked> Auch als Deck speichern</label>

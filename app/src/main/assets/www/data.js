@@ -35,14 +35,14 @@ const PREBUILT = [
   ['S10-1','10','Amber-Emerald'],['S10-2','10','Sapphire-Steel'],
   ['S12-1','12','Amber-Emerald'],['S12-2','12','Amethyst-Ruby'],
   ['S14-1','14','Amethyst-Steel'],['S14-2','14','Emerald-Sapphire'],
-  ['G1-1','G1','','Gateway: Stitch & Maleficent'],['G1-2','G1','','Gateway: Elsa & Mickey Mouse'],
-  // Illumineer's Quest: Komplettpaket = alle Decks aus der Box (Szenario-Deck + 2 Spielerdecks)
-  ['Q1-1+Q1-2+Q1-3','Q1','','{Q1} – Komplette Box (3 Decks)'],['Q1-1','Q1','','{Q1} – Szenario-Deck Ursula'],
-  ['Q1-2','Q1','','{Q1} – Mulan-Deck'],['Q1-3','Q1','','{Q1} – Yen-Sid-Deck'],
-  ['Q2-1+Q2-2+Q2-3','Q2','','{Q2} – Komplette Box (3 Decks)'],['Q2-1','Q2','','{Q2} – Szenario-Deck Jafar'],
-  ['Q2-2','Q2','','{Q2} – Bolt & Goofy'],['Q2-3','Q2','','{Q2} – Elsa & Pinocchio'],
-  ['Q3-1+Q3-2+Q3-3','Q3','','{Q3} – Komplette Box (3 Decks)'],['Q3-1','Q3','','{Q3} – Szenario-Deck der Ranken'],
-  ['Q3-2','Q3','','{Q3} – Christopher Robin & Sven'],['Q3-3','Q3','','{Q3} – Mr. Incredible & Violet']
+  ['G1-1','G1','Amber-Amethyst','Der Einstieg – Deck 1'],['G1-2','G1','Ruby-Sapphire','Der Einstieg – Deck 2'],
+  // Illumineer's Quest: Komplettpaket = alle Decks aus der Box (Bossdeck + Deck A + Deck B)
+  ['Q1-1+Q1-2+Q1-3','Q1','','{Q1} – Komplette Box (3 Decks)'],['Q1-2','Q1','Amber-Ruby','{Q1} – Deck A'],
+  ['Q1-3','Q1','Amethyst-Steel','{Q1} – Deck B'],['Q1-1','Q1','','{Q1} – Ursulas Deck (Bossdeck)'],
+  ['Q2-1+Q2-2+Q2-3','Q2','','{Q2} – Komplette Box (3 Decks)'],['Q2-2','Q2','Amber-Steel','{Q2} – Deck A'],
+  ['Q2-3','Q2','Amethyst-Sapphire','{Q2} – Deck B'],['Q2-1','Q2','','{Q2} – Dschafars Deck (Bossdeck)'],
+  ['Q3-1+Q3-2+Q3-3','Q3','','{Q3} – Komplette Box (3 Decks)'],['Q3-2','Q3','Ruby-Steel','{Q3} – Deck A'],
+  ['Q3-3','Q3','Amethyst-Sapphire','{Q3} – Deck B'],['Q3-1','Q3','','{Q3} – Bossdeck (Ranken)']
 ];
 // Mögliche neuere Starterdecks – werden im Hintergrund gesucht
 const PREBUILT_PROBE = ['Q4-1','Q4-2','Q4-3','Q5-1','Q5-2','Q5-3','S11-1','S11-2','S13-1','S13-2','S15-1','S15-2','S16-1','S16-2','S17-1','S17-2','S18-1','S18-2'];
