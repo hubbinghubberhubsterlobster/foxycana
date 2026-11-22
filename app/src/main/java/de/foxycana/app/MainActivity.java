@@ -316,6 +316,31 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> Toast.makeText(MainActivity.this, text, Toast.LENGTH_SHORT).show());
         }
 
+        /** Wie saveFile, überschreibt aber eine vorhandene Datei gleichen Namens (für automatische Backups). */
+        @JavascriptInterface
+        public String saveFileReplace(String name, String mime, String content) {
+            if (Build.VERSION.SDK_INT < 29) return saveFile(name, mime, content);
+            try {
+                byte[] data = content.getBytes(StandardCharsets.UTF_8);
+                Uri found = null;
+                String rel = Environment.DIRECTORY_DOWNLOADS + "/Foxycana/";
+                try (android.database.Cursor cur = getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        new String[]{MediaStore.Downloads._ID},
+                        MediaStore.Downloads.DISPLAY_NAME + "=? AND " + MediaStore.Downloads.RELATIVE_PATH + "=?",
+                        new String[]{name, rel}, null)) {
+                    if (cur != null && cur.moveToFirst())
+                        found = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cur.getLong(0));
+                }
+                if (found != null) {
+                    try (OutputStream os = getContentResolver().openOutputStream(found, "wt")) { os.write(data); }
+                    return "Download/Foxycana/" + name;
+                }
+                return saveFile(name, mime, content);
+            } catch (Exception e) {
+                return saveFile(name, mime, content);
+            }
+        }
+
         /** Speichert Text als Datei in "Download/Foxycana". Gibt den Ort zurück oder "ERR:...". */
         @JavascriptInterface
         public String saveFile(String name, String mime, String content) {

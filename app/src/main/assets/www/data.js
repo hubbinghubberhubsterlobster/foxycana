@@ -105,7 +105,7 @@ const DB = {
 };
 
 let saveTimer = null;
-function persist(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 250); }
+function persist(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 250); if(window.scheduleAutoBackup) window.scheduleAutoBackup(); }
 async function saveNow(){
   clearTimeout(saveTimer);
   const data = {coll:S.coll, decks:S.decks, settings:S.settings, extraDecks:S.extraDecks};

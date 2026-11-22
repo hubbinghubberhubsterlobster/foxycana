@@ -128,7 +128,7 @@ function renderGrid(){
   if(!items.length){
     grid.innerHTML = '';
     $('#grid-more').innerHTML = u.mode === 'owned' && !Object.keys(S.coll).length
-      ? `<div class="empty"><div class="icon">🦊</div><b>Noch keine Karten</b><p>Tippe unten auf den Scan-Knopf, leg das Handy in deinen Ständer und schieb eine Karte nach der anderen drunter.</p><button class="btn" data-act="scan-open">Scanner starten</button><p class="small">Oder unter <b>Decks</b> ein gekauftes Fertigdeck hinzufügen.</p></div>`
+      ? `<div class="empty"><div class="icon">🦊</div><b>Noch keine Karten</b><p>Tippe unten auf den Scan-Knopf, leg das Handy in deinen Ständer und schieb eine Karte nach der anderen drunter.</p><button class="btn" data-act="scan-open">Scanner starten</button><p class="small">Oder unter <b>Decks</b> ein gekauftes Fertigdeck hinzufügen.</p><button class="btn ghost small" data-act="backup-import">♻️ Backup wiederherstellen</button></div>`
       : `<div class="empty">Keine Karten gefunden.</div>`;
     return;
   }
@@ -482,10 +482,12 @@ function renderMore(){
       <div class="list">
         <button class="item" style="width:100%" data-act="csv-export">📤 Als CSV exportieren</button>
         <button class="item" style="width:100%" data-act="csv-import">📥 CSV importieren (Lorcery, Dreamborn …)</button>
-        <button class="item" style="width:100%" data-act="backup-export">💾 Backup speichern</button>
-        <button class="item" style="width:100%" data-act="backup-import">♻️ Backup laden</button>
+        <button class="item" style="width:100%" data-act="backup-now">💾 Backup jetzt speichern</button>
+        <button class="item" style="width:100%" data-act="backup-import">♻️ Backup laden (wiederherstellen)</button>
         <button class="item" style="width:100%;color:var(--bad)" data-act="coll-clear">🗑️ Sammlung leeren</button>
-      </div><p class="tiny muted">Deine Daten liegen nur auf diesem Handy. Speichere ab und zu ein Backup – es landet im Ordner „Download/Foxycana“.</p></div>
+      </div>
+      <label class="lbl">Automatisches Backup</label>${sel('autoBackup', [['on','An (empfohlen)'],['off','Aus']], s.autoBackup === 'off' ? 'off' : 'on')}
+      <p class="tiny muted">Nach jeder Änderung speichert Foxycana automatisch ein Backup in <b>Download/Foxycana</b>: „foxycana-backup-aktuell.json“ plus eins pro Wochentag (7 Tage zurück). Die Dateien bleiben auch erhalten, wenn die App gelöscht wird. Letztes Backup: <b>${lastBackup() ? fmtDate(new Date(lastBackup()).toISOString()) : 'noch keins'}</b>.<br>Zum Wiederherstellen: „Backup laden“ und die Datei auswählen.</p></div>
     <p class="tiny muted" style="margin-top:16px">Foxycana ${NATIVE ? 'v' + esc(NATIVE.version()) : '(Browser)'} · Kartendaten: LorcanaJSON · Preise: Cardmarket-Preisguide (täglich aktualisiert, ${'<a href="#" data-act="open-url" data-url="https://www.cardmarket.com/de/Lorcana" style="color:var(--gold)">cardmarket.com</a>'}) · Kurse: Europäische Zentralbank. Inoffizielle Fan-App, nicht verbunden mit Disney oder Ravensburger.</p>`;
   $$('select[data-set]', view).forEach(el => el.onchange = () => {
     const k = el.dataset.set, v = el.value;
@@ -516,7 +518,30 @@ A['csv-export'] = () => {
     rows.push([e.c.s, (e.c.n ?? '') + (e.c.v || ''), e.foil ? 'foil' : 'normal', e.q, e.lang.toUpperCase(), e.c.name.en, e.c.ver.en, e.c.r, (priceEUR(e.c, e.foil) || 0).toFixed(2)]);
   saveFile('foxycana-sammlung-' + stamp() + '.csv', 'text/csv', rows.map(r => r.map(csvCell).join(',')).join('\n'));
 };
-A['backup-export'] = () => saveFile('foxycana-backup-' + stamp() + '.json', 'application/json', JSON.stringify({app:'foxycana', v:1, date:new Date().toISOString(), coll:S.coll, decks:S.decks, settings:S.settings}));
+function backupJSON(){ return JSON.stringify({app:'foxycana', v:1, date:new Date().toISOString(), coll:S.coll, decks:S.decks, settings:S.settings}); }
+A['backup-export'] = () => saveFile('foxycana-backup-' + stamp() + '.json', 'application/json', backupJSON());
+
+/* Automatisches Backup: nach jeder Änderung (gebündelt) und beim Verlassen der App.
+   Datei "foxycana-backup-aktuell.json" + eine pro Wochentag (7 Tage zurück) in Download/Foxycana.
+   Bleibt auch erhalten, wenn die App gelöscht wird. */
+const WDAYS = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+let abTimer = null, abDirty = false;
+function scheduleAutoBackup(){ abDirty = true; clearTimeout(abTimer); abTimer = setTimeout(autoBackup, 20000); }
+window.scheduleAutoBackup = scheduleAutoBackup;
+function lastBackup(){ try{ return +(localStorage.getItem('fx-lastbackup') || 0); }catch(e){ return 0; } }
+function autoBackup(force){
+  clearTimeout(abTimer);
+  if(!abDirty && !force) return;
+  if(!NATIVE || !NATIVE.saveFileReplace || S.settings.autoBackup === 'off') return;
+  if(!Object.keys(S.coll).length && !S.decks.length) return; // niemals eine leere Sammlung sichern
+  abDirty = false;
+  const json = backupJSON();
+  const r = NATIVE.saveFileReplace('foxycana-backup-aktuell.json', 'application/json', json);
+  NATIVE.saveFileReplace('foxycana-backup-' + WDAYS[new Date().getDay()] + '.json', 'application/json', json);
+  if(!String(r).startsWith('ERR:')){ try{ localStorage.setItem('fx-lastbackup', String(Date.now())); }catch(e){} }
+  return r;
+}
+A['backup-now'] = () => { abDirty = true; const r = autoBackup(true); if(!NATIVE){ A['backup-export'](); return; } if(!r){ toast('Nichts zu sichern – Sammlung ist leer'); return; } toast(String(r).startsWith('ERR:') ? 'Fehler: ' + r.slice(4) : 'Backup gespeichert in ' + r, 3500); renderMore(); };
 function pickFile(accept){
   return new Promise(res => {
     const f = $('#file-in'); f.value = ''; f.accept = accept || '';
@@ -798,7 +823,7 @@ window.__androidBack = () => {
   if(S.ui.tab !== 'collection' || S.ui.deck || S.ui.assist){ Object.assign(S.ui, {tab:'collection', deck:null, assist:null}); render(); return true; }
   return false;
 };
-window.__appPause = () => { saveNow(); if(SC.on){ SC.paused = true; scanOptsUI(); scanStatus('Pausiert'); } };
+window.__appPause = () => { saveNow(); try{ autoBackup(); }catch(e){} if(SC.on){ SC.paused = true; scanOptsUI(); scanStatus('Pausiert'); } };
 document.addEventListener('error', e => { const t = e.target; if(t && t.tagName === 'IMG') t.style.visibility = 'hidden'; }, true);
 document.addEventListener('visibilitychange', () => { if(document.hidden) saveNow(); else if(S.cards.length && Date.now() - lastRefresh > 3 * HOUR) backgroundRefresh(); });
 
