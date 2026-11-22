@@ -95,6 +95,7 @@ function renderCollection(){
       <div class="lbl">Sammlungswert</div><div class="big">${money(st.value)}</div>
       <div class="stats"><div><b>${st.total}</b>Karten</div><div><b>${st.unique}</b>verschiedene</div><div><b>${S.decks.length}</b>Decks</div></div>
       <div class="tiny" style="color:#b9b3dc;margin-top:8px">Cardmarket-Preisguide · ${({trend:'Trendpreis',low:'Ab-Preis',avg30:'30-Tage-Schnitt'})[S.settings.priceBasis]} · Stand ${fmtDate(S.priceDate)}</div>
+      <div class="tiny" id="sync" style="color:#9fe3bf;margin-top:2px">${esc(S.syncMsg || '')}</div>
     </div>
     <div class="seg"><button class="${u.mode==='owned'?'on':''}" data-act="mode" data-m="owned">Meine Karten</button><button class="${u.mode==='all'?'on':''}" data-act="mode" data-m="all">Alle Karten</button></div>
     <div class="search">${ICON_SEARCH}<input id="q" placeholder="Name, Version oder #Nummer" value="${esc(u.q)}"></div>
@@ -267,17 +268,23 @@ function deckStats(d){
   return {count, value, missing, missingValue, inkable, inks:[...inks], curve, types};
 }
 function inkColDots(inks){ return inks.map(k => `<i class="dot" style="background:${(INKS[k]||{}).c}"></i>`).join(''); }
+const TIER_COL = {S:'#F5D58E', A:'#3CCB7F', B:'#1C8FD6', C:'#9A9CB8', D:'#FF6B6B'};
+function tierBadge(r){ return r ? `<div style="text-align:center;min-width:44px"><div style="font-weight:800;font-size:20px;color:${TIER_COL[r.tier]}">${r.tier}</div><div class="tiny muted">${r.score}</div></div>` : '<div style="min-width:44px"></div>'; }
 function renderDecks(){
-  const list = S.decks.map(d => { const st = deckStats(d); return `<button class="deck-item" data-act="deck-open" data-id="${d.id}">
+  const rated = S.decks.map(d => ({d, r: window.ASSIST ? ASSIST.rateDeck(d) : null})).sort((a, b) => (b.r ? b.r.score : -1) - (a.r ? a.r.score : -1));
+  if(window.ASSIST && !ASSIST.metaLoaded() && !renderDecks.loading){ renderDecks.loading = true; ASSIST.loadMeta().then(() => { if(S.ui.tab === 'decks' && !S.ui.deck && !S.ui.assist) renderDecks(); }); }
+  const list = rated.map(({d, r}, i) => { const st = deckStats(d); return `<button class="deck-item" data-act="deck-open" data-id="${d.id}">
+      ${tierBadge(r)}
       <div class="deck-inks">${inkColDots(st.inks) || '<i class="dot" style="background:var(--line)"></i>'}</div>
       <div class="grow"><b class="ell" style="display:block">${esc(d.name)}</b>
       <div class="tiny muted">${st.count} Karten · ${st.inks.map(k => INKS[k].de).join('/') || 'leer'}${d.src === 'prebuilt' ? ' · Fertigdeck' : ''}</div>
+      ${r && r.arche ? `<div class="tiny muted ell">≈ Meta: ${esc(r.arche.name)} (${r.arche.share}% · ${r.arche.wr ?? '–'}% Siege)</div>` : ''}
       ${st.missing ? `<div class="miss">${st.missing} fehlen (${money(st.missingValue)})</div>` : st.count ? '<div class="tiny" style="color:var(--good)">Alle Karten vorhanden</div>' : ''}</div>
-      <div class="gold small">${money(st.value)}</div></button>`; }).join('');
+      <div style="text-align:right"><div class="gold small">${money(st.value)}</div>${r ? `<div class="tiny muted">#${i + 1}</div>` : ''}</div></button>`; }).join('');
   view.innerHTML = `<div class="row">${backBtn()}<h1 class="grow">Decks</h1></div>
     <button class="deck-item assist-cta" data-act="assist-open"><span style="font-size:26px">✨</span><div class="grow"><b style="display:block">Deck-Assistent</b><span class="tiny muted">Baut die stärksten Decks aus deinen Karten und zeigt, was gerade in der Meta stark ist</span></div><span class="muted">›</span></button>
     <div class="row" style="gap:8px;margin-bottom:14px"><button class="btn grow" data-act="prebuilt">🛍️ Fertigdeck gekauft</button><button class="btn ghost" data-act="deck-new">+ Neu</button></div>
-    ${list || `<div class="empty"><div class="icon">🃏</div><b>Noch keine Decks</b><p>Hast du ein Starterdeck gekauft? Tipp auf <b>Fertigdeck gekauft</b> – alle 60 Karten landen sofort in deiner Sammlung.</p></div>`}
+    ${list ? `<div class="row between" style="margin:4px 0 8px"><b>Meta-Ranking deiner Decks</b><button class="chip" data-act="rank-info">?</button></div>` + list : ''}${list ? '' : `<div class="empty"><div class="icon">🃏</div><b>Noch keine Decks</b><p>Hast du ein Starterdeck gekauft? Tipp auf <b>Fertigdeck gekauft</b> – alle 60 Karten landen sofort in deiner Sammlung.</p></div>`}
     <button class="btn ghost block" data-act="deck-import" style="margin-top:6px">Deckliste einfügen (Text)</button>
 `;
 }
@@ -304,6 +311,9 @@ function renderDeck(){
     <div class="hero"><div class="row between"><div><div class="lbl">Deckwert</div><div class="big">${money(st.value)}</div></div><div class="deck-inks" style="flex-direction:row">${inkColDots(st.inks)}</div></div>
       <div class="stats"><div><b>${st.count}</b>Karten</div><div><b>${st.inkable}</b>tintenfähig</div><div><b style="color:${st.missing ? 'var(--bad)' : 'var(--good)'}">${st.missing}</b>fehlen</div></div>
       ${st.missing ? `<div class="tiny" style="color:#ffc9c9;margin-top:8px">Fehlende Karten kosten ca. ${money(st.missingValue)}</div>` : ''}</div>
+    ${(() => { const r = window.ASSIST ? ASSIST.rateDeck(d) : null; if(!r) return ''; return `<div class="card row" style="margin-bottom:12px">${tierBadge(r)}<div class="grow"><b>Meta-Einschätzung: Stufe ${r.tier}</b>
+      <div class="tiny muted">${r.arche ? `Entspricht <b>${esc(r.arche.name)}</b> (${esc(r.arche.inks.map(k => INKS[k].de).join(' & '))}) – ${r.arche.share}% der Turnierdecks, ${r.arche.wr ?? '–'}% Siege` : 'Kein bekannter Meta-Archetyp – eher ein eigenes Deck'}</div>
+      <div class="tiny muted">Kartenstärke ${Math.round(r.quality * 100)}/100${r.illegal ? ` · <span style="color:var(--bad)">${r.illegal} Karten nicht Core-legal</span>` : ''} · Meta ${r.live ? 'live' : 'Stand'} ${fmtDate(r.metaDate)}</div></div></div>`; })()}
     ${warn.length ? `<div class="warn" style="margin-bottom:12px">${warn.map(esc).join('<br>')}</div>` : ''}
     <div class="card"><b class="small">Kostenkurve</b><div class="curve">${st.curve.map((n, i) => `<div><span>${n || ''}</span><i style="height:${Math.round(n / maxC * 56)}px"></i>${i === 8 ? '8+' : i}</div>`).join('')}</div></div>
     <div class="row" style="gap:8px;margin:12px 0"><button class="btn grow" data-act="deck-add">+ Karten</button><button class="btn ghost" data-act="deck-menu">⋯</button></div>
@@ -314,6 +324,11 @@ function renderDeck(){
         <div class="stepper"><button data-act="deck-step" data-id="${x.c.id}" data-d="-1">−</button><b>${x.n}</b><button data-act="deck-step" data-id="${x.c.id}" data-d="1">+</button></div></div>`; }).join('')).join('')
       || `<div class="empty">Noch keine Karten im Deck.</div>`}`;
 }
+A['rank-info'] = () => openSheet(`<h2>So entsteht das Ranking</h2><p class="muted small">Jedes Deck bekommt eine Punktzahl von 0–100 und eine Stufe (S, A, B, C, D):</p>
+  <div class="list small"><div class="item">🃏 <div class="grow"><b>Kartenstärke (75 %)</b><br><span class="muted">Spielwerte, Fähigkeiten und wie gefragt die Karten auf Cardmarket sind</span></div></div>
+  <div class="item">🏆 <div class="grow"><b>Meta (25 %)</b><br><span class="muted">Passt das Deck zu einem aktuellen Turnier-Archetyp? Dann zählen dessen Siegquote und Verbreitung (inkdecks.com)</span></div></div>
+  <div class="item">⚠️ <div class="grow"><b>Abzüge</b><br><span class="muted">Weniger als 60 Karten, mehr als 2 Farben oder Karten, die in Core nicht mehr erlaubt sind</span></div></div></div>
+  <p class="tiny muted">Das ist eine Einschätzung – echte Turnierergebnisse hängen auch vom Spielen ab 😉</p><div class="actions"><button class="btn" data-act="sheet-close">Alles klar</button></div>`);
 A['deck-step'] = el => { const d = currentDeck(); const id = el.dataset.id; d.cards[id] = (d.cards[id] || 0) + +el.dataset.d; if(d.cards[id] <= 0) delete d.cards[id]; persist(); renderDeck(); };
 A['deck-add'] = () => {
   const d = currentDeck(); const st = deckStats(d);
@@ -785,7 +800,7 @@ window.__androidBack = () => {
 };
 window.__appPause = () => { saveNow(); if(SC.on){ SC.paused = true; scanOptsUI(); scanStatus('Pausiert'); } };
 document.addEventListener('error', e => { const t = e.target; if(t && t.tagName === 'IMG') t.style.visibility = 'hidden'; }, true);
-document.addEventListener('visibilitychange', () => { if(document.hidden) saveNow(); });
+document.addEventListener('visibilitychange', () => { if(document.hidden) saveNow(); else if(S.cards.length && Date.now() - lastRefresh > 3 * HOUR) backgroundRefresh(); });
 
 function bootScreen(msg, err){
   view.innerHTML = `<div class="boot"><div class="logo" style="margin-bottom:20px">${LOGO}<h1 style="margin:0">Foxycana</h1></div>
@@ -799,14 +814,26 @@ async function firstRun(){
   bootScreen('Lade Cardmarket-Preise …');
   try{ await updatePrices(); }catch(e){ console.warn(e); }
   try{ await updateRates(); }catch(e){ console.warn(e); }
-  render(); probeDecks();
+  render(); lastRefresh = Date.now(); if(window.ASSIST) ASSIST.loadMeta(true).catch(() => {}); probeDecks();
 }
+/* Beim Start (und nach längerer Pause) alles aktualisieren: Karten, Preise, Kurse, Meta */
+let refreshing = false, lastRefresh = 0;
+function setSync(t){ S.syncMsg = t; const el = $('#sync'); if(el) el.textContent = t; }
+function softRender(){ const a = document.activeElement; if(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')) return; if(sheetOpen()) { refreshBehindSheet(); return; } render(); }
 async function backgroundRefresh(){
-  const now = Date.now();
-  try{ if(now - S.priceFetched > 12 * HOUR){ await updatePrices(); render(); } }catch(e){ console.warn(e); }
-  try{ if(now - S.ratesFetched > 12 * HOUR){ await updateRates(); if(S.settings.currency !== 'EUR') render(); } }catch(e){ console.warn(e); }
-  try{ if(now - S.cardsFetched > 4 * 24 * HOUR || S.cardsV !== 2){ await updateCards(); render(); } }catch(e){ console.warn(e); }
+  if(refreshing) return; refreshing = true; lastRefresh = Date.now();
+  let errs = 0; setSync('⟳ Aktualisiere Daten …');
+  try{
+    const md = await getJSON(LJ + 'en/metadata.json');
+    if(!S.cardsDate || (md.generatedOn && md.generatedOn !== S.cardsDate) || S.cardsV !== 2){ setSync('⟳ Neue Kartendaten werden geladen …'); await updateCards(); }
+  }catch(e){ errs++; console.warn(e); }
+  try{ setSync('⟳ Aktualisiere Preise …'); await updatePrices(); }catch(e){ errs++; console.warn(e); }
+  try{ await updateRates(); }catch(e){ errs++; console.warn(e); }
+  try{ if(window.ASSIST) await ASSIST.loadMeta(true); }catch(e){ errs++; console.warn(e); }
   probeDecks();
+  refreshing = false;
+  setSync(errs ? 'Offline – zeige gespeicherte Daten' : '✓ Alles aktuell');
+  softRender();
 }
 async function boot(){
   try{ await DB.open(); }catch(e){ console.warn('IndexedDB', e); }

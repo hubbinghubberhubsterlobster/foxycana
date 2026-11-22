@@ -316,6 +316,40 @@ const ASSIST = (() => {
     go({tab:'decks', assist:null, deck: d.id});
   };
 
-  return {render, run, loadMeta, state: st, reset(){ POWER = null; GROUPS = null; }};
+  /* ---------- Bewertung gespeicherter Decks (Meta-Ranking) ---------- */
+  function rateDeck(d){
+    if(!S.cards.length) return null;
+    if(!POWER || !GROUPS) buildPower();
+    let n = 0, pw = 0, illegal = 0; const inks = new Set(), cards = [];
+    for(const [id, k] of Object.entries(d.cards || {})){
+      const c = S.byId.get(+id) || S.byId.get(id); if(!c) continue;
+      const g = GROUPS.get(fk(c));
+      n += k; pw += (g ? g.power : 0.3) * k; inkList(c).forEach(x => inks.add(x)); cards.push({c, k});
+      if(!g || !g.cards.some(x => setLegal(x.s, 'core'))) illegal += k;
+    }
+    if(!n) return null;
+    const quality = pw / n;
+    const m = (META && META.list && META.list.length) ? META : META_FALLBACK;
+    let best = null;
+    if(inks.size <= 2) for(const a of m.list){
+      if(!a.inks.every(x => inks.has(x))) continue;
+      const th = themeFor(a.name); let fit = 1;
+      if(th){ const tc = cards.reduce((s2, x) => s2 + (themeMatch(x.c, th) ? x.k : 0), 0); fit = tc / n >= 0.2 ? 1 : 0.4; }
+      const val = fit * (a.share + (a.wr ?? 50) / 2);
+      if(!best || val > best.val) best = {a, fit, val};
+    }
+    let metaS = 0.35;
+    if(best && best.fit === 1) metaS = Math.min(1, (best.a.wr ?? 50) / 100 * 0.7 + Math.min(best.a.share, 25) / 25 * 0.3);
+    else if(best) metaS = 0.4;
+    let score = 100 * (0.75 * quality + 0.25 * metaS);
+    if(n < 60) score -= (60 - n) * 0.5;
+    if(illegal) score -= illegal * 0.5;
+    if(inks.size > 2) score -= 15;
+    score = Math.max(0, Math.round(score));
+    const tier = score >= 72 ? 'S' : score >= 63 ? 'A' : score >= 54 ? 'B' : score >= 45 ? 'C' : 'D';
+    return {score, tier, quality, arche: best && best.fit === 1 ? best.a : null, illegal, count: n, metaDate: m.date, live: !!m.live};
+  }
+
+  return {render, run, loadMeta, rateDeck, metaLoaded: () => !!META, state: st, reset(){ POWER = null; GROUPS = null; }};
 })();
 window.ASSIST = ASSIST;
