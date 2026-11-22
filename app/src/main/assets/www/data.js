@@ -52,7 +52,7 @@ const S = {
   extraDecks: [],
   settings: {
     currency:'EUR', dispLang:'de', priceBasis:'trend',
-    scanLang:'auto', defaultLang:'de', confirm:2, sound:true, vibrate:true, rotation:'auto', foil:false
+    scanLang:'auto', defaultLang:'de', confirm:2, sound:true, vibrate:true, rotation:'auto', foil:false, frame:'m'
   },
   ui: { tab:'collection', mode:'owned', q:'', inks:[], set:'', rarity:'', type:'', lang:'', foil:'', sort:'value', limit:240, deck:null }
 };

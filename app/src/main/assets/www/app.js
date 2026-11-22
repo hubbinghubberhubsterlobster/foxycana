@@ -566,6 +566,8 @@ function scanOptsUI(){
   $('#opt-foil').classList.toggle('on', !!s.foil);
   $('#opt-rot').textContent = '↻ ' + (s.rotation === 'auto' ? 'Auto' + (SC.goodRot != null ? ' ' + SC.goodRot + '°' : '') : s.rotation + '°');
   $('#opt-pause').textContent = SC.paused ? '▶ Weiter' : '⏸ Pause';
+  $('#opt-size').textContent = '▢ Rahmen ' + ({s:'klein', m:'mittel', l:'groß'})[s.frame || 'm'];
+  $('#frame').className = 'frame size-' + (s.frame || 'm');
   $('#btn-torch').classList.toggle('on', SC.torch);
   const v = SC.session.reduce((sum, x) => sum + (priceEUR(x.c, x.foil) || 0), 0);
   $('#scan-sum').textContent = `${SC.session.length} ${SC.session.length === 1 ? 'Karte' : 'Karten'} · ${money(v)}`;
@@ -595,6 +597,7 @@ function stopScanner(){
   if(NATIVE) NATIVE.keepAwake(false);
 }
 A['scan-close'] = () => { stopScanner(); $('#scan').hidden = true; if(SC.session.length) toast(`${SC.session.length} Karten gescannt`); render(); };
+A['scan-size'] = () => { const o = ['s','m','l']; S.settings.frame = o[(o.indexOf(S.settings.frame || 'm') + 1) % 3]; persist(); scanOptsUI(); SC.state = 'search'; SC.last = null; };
 A['scan-pause'] = () => { SC.paused = !SC.paused; scanStatus(SC.paused ? 'Pausiert' : 'Lege eine Karte unter die Kamera'); scanOptsUI(); };
 A['scan-foil'] = () => { S.settings.foil = !S.settings.foil; persist(); scanOptsUI(); };
 A['scan-lang'] = () => { const o = ['auto','de','en']; S.settings.scanLang = o[(o.indexOf(S.settings.scanLang) + 1) % 3]; persist(); scanOptsUI(); };
@@ -612,8 +615,21 @@ function runOcr(dataUrl, rot){
     setTimeout(() => { if(OCRP.has(id)){ OCRP.delete(id); res({error:'timeout'}); } }, 9000); });
 }
 const sigCv = $('#cv-sig'), sigCtx = sigCv.getContext('2d', {willReadFrequently:true});
-function frameSig(){
-  sigCtx.drawImage(vid, 0, 0, 24, 24);
+/* Bereich des Rahmens auf dem Bildschirm → Ausschnitt im Kamerabild (Video ist "cover" skaliert) */
+function guideCrop(){
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  const vr = vid.getBoundingClientRect(), fr = $('#frame').getBoundingClientRect();
+  const s = Math.max(vr.width / vw, vr.height / vh);
+  const offX = (vr.width - vw * s) / 2, offY = (vr.height - vh * s) / 2;
+  const m = 0.05; // kleiner Rand, damit die Sammlernummer am Kartenrand nicht abgeschnitten wird
+  let x = (fr.left - vr.left - offX - fr.width * m) / s, y = (fr.top - vr.top - offY - fr.height * m) / s;
+  let w = fr.width * (1 + 2 * m) / s, h = fr.height * (1 + 2 * m) / s;
+  x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+  if(!(w > 20 && h > 20)) return {x:0, y:0, w:vw, h:vh};
+  return {x, y, w, h};
+}
+function frameSig(r){
+  sigCtx.drawImage(vid, r.x, r.y, r.w, r.h, 0, 0, 24, 24);
   const d = sigCtx.getImageData(0, 0, 24, 24).data; const g = new Uint8Array(576);
   for(let i = 0; i < 576; i++) g[i] = (d[i*4] * 3 + d[i*4+1] * 6 + d[i*4+2]) / 10;
   return g;
@@ -630,16 +646,19 @@ function scanLoop(){
   }, SC.state === 'lock' ? 160 : 90);
 }
 async function scanTick(){
-  const sig = frameSig();
+  const crop = guideCrop();
+  const sig = frameSig(crop);
   if(SC.state === 'lock'){
     if(sigDiff(sig, SC.lockSig) < 16) return;       // Karte liegt noch – nichts tun
     SC.state = 'search'; SC.last = null; SC.lastN = 0;
     scanStatus('Nächste Karte …');
   }
-  const cv = $('#cv'), vw = vid.videoWidth, vh = vid.videoHeight;
-  const sc = Math.min(1, 1920 / Math.max(vw, vh));
-  cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
-  cv.getContext('2d').drawImage(vid, 0, 0, cv.width, cv.height);
+  // Nur den Bereich im Rahmen auswerten – Nachbarkarten (z. B. im Binder) werden ignoriert
+  const cv = $('#cv');
+  const sc = Math.min(2, Math.max(1, 1400 / Math.max(crop.w, crop.h)));
+  cv.width = Math.round(crop.w * sc); cv.height = Math.round(crop.h * sc);
+  const cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high';
+  cx.drawImage(vid, crop.x, crop.y, crop.w, crop.h, 0, 0, cv.width, cv.height);
   const res = await runOcr(cv.toDataURL('image/jpeg', 0.86), SC.rot);
   if(!SC.on || SC.paused) return;
   if(res.error){ scanStatus('Texterkennung: ' + res.error); return; }
