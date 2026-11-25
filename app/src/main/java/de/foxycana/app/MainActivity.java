@@ -7,6 +7,8 @@ import android.content.ClipboardManager;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Rect;
@@ -42,6 +44,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -66,6 +69,8 @@ public class MainActivity extends Activity {
     private static final String HOST = "app.foxycana";
     private static final int REQ_CAMERA = 1;
     private static final int REQ_FILE = 2;
+    private static final int REQ_PICK = 3;
+    private String pickId;
 
     private WebView web;
     private TextRecognizer recognizer;
@@ -142,8 +147,13 @@ public class MainActivity extends Activity {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = cb;
                 try {
-                    Intent i = params.createIntent();
-                    i.setType("*/*");
+                    Intent i;
+                    if (params.isCaptureEnabled()) { i = params.createIntent(); }
+                    else {
+                        i = new Intent(Intent.ACTION_GET_CONTENT);
+                        i.addCategory(Intent.CATEGORY_OPENABLE);
+                        i.setType("*/*");
+                    }
                     startActivityForResult(i, REQ_FILE);
                 } catch (Exception e) {
                     fileCallback = null;
@@ -248,6 +258,26 @@ public class MainActivity extends Activity {
     private class Bridge {
         @JavascriptInterface
         public boolean isNative() { return true; }
+
+        /* Datei auswählen und als Base64 an JS zurückgeben: window.__nativeFile(id, b64|null, name, fehler) */
+        @JavascriptInterface
+        public void pickFile(final String id) {
+            runOnUiThread(() -> {
+                pickId = id;
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                try { startActivityForResult(i, REQ_PICK); }
+                catch (Exception e) {
+                    try {
+                        Intent g = new Intent(Intent.ACTION_GET_CONTENT);
+                        g.addCategory(Intent.CATEGORY_OPENABLE);
+                        g.setType("*/*");
+                        startActivityForResult(g, REQ_PICK);
+                    } catch (Exception e2) { fileResult(id, null, "", "Keine Dateiauswahl verfügbar"); }
+                }
+            });
+        }
 
         @JavascriptInterface
         public String version() {
@@ -382,10 +412,44 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_PICK) {
+            final String id = pickId; pickId = null;
+            final Uri uri = (resultCode == RESULT_OK && data != null) ? data.getData() : null;
+            if (uri == null) { fileResult(id, null, "", ""); return; }
+            pool.execute(() -> {
+                String name = "";
+                try (Cursor c = getContentResolver().query(uri, null, null, null, null)) {
+                    if (c != null && c.moveToFirst()) {
+                        int ix = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                        if (ix >= 0) name = c.getString(ix);
+                    }
+                } catch (Exception ignored) { }
+                try (InputStream in = getContentResolver().openInputStream(uri)) {
+                    if (in == null) throw new IOException("Datei nicht lesbar");
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    byte[] buf = new byte[65536]; int n; long total = 0;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n); total += n;
+                        if (total > 40L * 1024 * 1024) throw new IOException("Datei zu groß");
+                    }
+                    fileResult(id, Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP), name, "");
+                } catch (Exception e) {
+                    fileResult(id, null, name, e.getMessage() == null ? "Lesefehler" : e.getMessage());
+                }
+            });
+            return;
+        }
         if (requestCode == REQ_FILE && fileCallback != null) {
             fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
             fileCallback = null;
         }
+    }
+
+    private void fileResult(String id, String b64, String name, String err) {
+        final String js = "window.__nativeFile&&window.__nativeFile(" + JSONObject.quote(id == null ? "" : id) + ","
+            + (b64 == null ? "null" : JSONObject.quote(b64)) + "," + JSONObject.quote(name == null ? "" : name) + ","
+            + JSONObject.quote(err == null ? "" : err) + ")";
+        runOnUiThread(() -> web.evaluateJavascript(js, null));
     }
 
     @Override
